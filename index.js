@@ -1,6 +1,6 @@
 const { default: makeWASocket, useMultiFileAuthState, DisconnectReason } = require('@whiskeysockets/baileys');
 const { createClient } = require('@supabase/supabase-js');
-const qrcode = require('qrcode-terminal'); // <-- Traemos a nuestro viejo amigo de vuelta
+const qrcode = require('qrcode-terminal');
 require('dotenv').config();
 const http = require('http');
 const pino = require('pino');
@@ -27,18 +27,19 @@ async function iniciarBot() {
 
     const sock = makeWASocket({
         auth: state,
-        // Sacamos la opción vieja que tiraba error
         logger: pino({ level: 'silent' }), 
-        browser: ["Bot Familiar", "Chrome", "1.0.0"]
+        // 1. EL DISFRAZ: Le hacemos creer a WhatsApp que somos una PC con Linux
+        browser: ["Ubuntu", "Chrome", "120.0.0"], 
+        // 2. AHORRO: Le decimos que no descargue el historial viejo para no saturar la RAM
+        syncFullHistory: false,
+        generateHighQualityLinkPreview: false
     });
 
     sock.ev.on('creds.update', saveCreds);
 
-    // Acá está la magia nueva: Escuchamos todo lo que pasa con la conexión
     sock.ev.on('connection.update', (update) => {
         const { connection, lastDisconnect, qr } = update;
 
-        // Si Baileys nos manda un QR, lo dibujamos nosotros
         if (qr) {
             qrcode.generate(qr, { small: true });
             console.log('¡Escaneá este QR rápido desde tu WhatsApp!');
@@ -46,8 +47,13 @@ async function iniciarBot() {
 
         if (connection === 'close') {
             const reconectar = lastDisconnect.error?.output?.statusCode !== DisconnectReason.loggedOut;
-            console.log('❌ Conexión cerrada. Reconectando...');
-            if (reconectar) iniciarBot();
+            // 3. LA LUPA: Ahora vemos exactamente por qué falla
+            console.log('❌ Conexión cerrada. Error real:', lastDisconnect.error?.message || lastDisconnect.error);
+            
+            if (reconectar) {
+                console.log('⏳ Intentando reconectar en 3 segundos...');
+                setTimeout(iniciarBot, 3000); // Pausa de 3 segundos para no hacer spam
+            }
         } else if (connection === 'open') {
             console.log('✅ ¡Bot conectado exitosamente! Ya podés mandarle gastos.');
         }
@@ -69,7 +75,6 @@ async function iniciarBot() {
         };
 
         // --- TUS COMANDOS ---
-
         if (texto === 'info') {
             const mensajeInfo = `🤖 *BOT FAMILIAR DE GASTOS* 🤖\n\n📝 *Anotar:* _costo 20000_\n📅 *Mes:* _total mes_\n📊 *Resumen:* _resumen mes_\n👤 *Lo tuyo:* _mis gastos mes_\n📆 *Fechas:* _total desde DD/MM/AAAA hasta DD/MM/AAAA_\n💰 *Histórico:* _total historico_`;
             await responder(mensajeInfo);
