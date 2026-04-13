@@ -1,8 +1,9 @@
 const { default: makeWASocket, useMultiFileAuthState, DisconnectReason } = require('@whiskeysockets/baileys');
 const { createClient } = require('@supabase/supabase-js');
+const qrcode = require('qrcode-terminal'); // <-- Traemos a nuestro viejo amigo de vuelta
 require('dotenv').config();
 const http = require('http');
-const pino = require('pino'); // Librería para que la consola no se llene de texto basura
+const pino = require('pino');
 
 // --- CONFIGURACIÓN DE SUPABASE SEGURA ---
 const supabaseUrl = process.env.SUPABASE_URL; 
@@ -22,53 +23,52 @@ const formatearFecha = (fechaStr) => {
 
 // --- FUNCIÓN PRINCIPAL DEL BOT CON BAILEYS ---
 async function iniciarBot() {
-    // Guarda la sesión localmente para no pedir el QR todo el tiempo
     const { state, saveCreds } = await useMultiFileAuthState('auth_baileys');
 
     const sock = makeWASocket({
         auth: state,
-        printQRInTerminal: true, // Imprime el QR en la consola de Render
-        logger: pino({ level: 'silent' }), // Apaga los logs internos para ver bien el QR
+        // Sacamos la opción vieja que tiraba error
+        logger: pino({ level: 'silent' }), 
         browser: ["Bot Familiar", "Chrome", "1.0.0"]
     });
 
-    // Guarda las credenciales cuando te conectás
     sock.ev.on('creds.update', saveCreds);
 
-    // Escucha si te conectaste o desconectaste
+    // Acá está la magia nueva: Escuchamos todo lo que pasa con la conexión
     sock.ev.on('connection.update', (update) => {
-        const { connection, lastDisconnect } = update;
+        const { connection, lastDisconnect, qr } = update;
+
+        // Si Baileys nos manda un QR, lo dibujamos nosotros
+        if (qr) {
+            qrcode.generate(qr, { small: true });
+            console.log('¡Escaneá este QR rápido desde tu WhatsApp!');
+        }
+
         if (connection === 'close') {
             const reconectar = lastDisconnect.error?.output?.statusCode !== DisconnectReason.loggedOut;
-            console.log('❌ Conexión cerrada. ¿Reconectando?:', reconectar);
+            console.log('❌ Conexión cerrada. Reconectando...');
             if (reconectar) iniciarBot();
         } else if (connection === 'open') {
-            console.log('✅ ¡Bot conectado exitosamente SIN usar Chrome! Memoria salvada.');
+            console.log('✅ ¡Bot conectado exitosamente! Ya podés mandarle gastos.');
         }
     });
 
-    // Escucha los mensajes
     sock.ev.on('messages.upsert', async ({ messages }) => {
         const m = messages[0];
         if (!m.message) return;
 
-        // Extraer el texto (Baileys maneja los textos de una forma un poco más compleja)
         let rawText = m.message.conversation || m.message.extendedTextMessage?.text || "";
         if (!rawText) return;
 
         const texto = limpiarTexto(rawText);
-        
-        // El ID del grupo donde se mandó el mensaje
         const idChat = m.key.remoteJid;
-        // El número de la persona real que lo mandó (si es en un grupo, participant. Si es privado, remoteJid)
         const telefonoRemitente = m.key.participant || m.key.remoteJid;
 
-        // Función ayudante para responder rápido
         const responder = async (textoRespuesta) => {
             await sock.sendMessage(idChat, { text: textoRespuesta }, { quoted: m });
         };
 
-        // --- ACÁ EMPIEZAN TUS COMANDOS DE SIEMPRE ---
+        // --- TUS COMANDOS ---
 
         if (texto === 'info') {
             const mensajeInfo = `🤖 *BOT FAMILIAR DE GASTOS* 🤖\n\n📝 *Anotar:* _costo 20000_\n📅 *Mes:* _total mes_\n📊 *Resumen:* _resumen mes_\n👤 *Lo tuyo:* _mis gastos mes_\n📆 *Fechas:* _total desde DD/MM/AAAA hasta DD/MM/AAAA_\n💰 *Histórico:* _total historico_`;
