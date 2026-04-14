@@ -1,6 +1,5 @@
 const { default: makeWASocket, useMultiFileAuthState, DisconnectReason } = require('@whiskeysockets/baileys');
 const { createClient } = require('@supabase/supabase-js');
-const qrcode = require('qrcode-terminal');
 require('dotenv').config();
 const http = require('http');
 const pino = require('pino');
@@ -10,6 +9,9 @@ const supabaseUrl = process.env.SUPABASE_URL;
 const supabaseKey = process.env.SUPABASE_KEY;
 const supabase = createClient(supabaseUrl, supabaseKey);
 // ----------------------------------------
+
+// 👇 ¡PONÉ EL NÚMERO DEL BOT ACÁ! (Ej: 5492984123456)
+const NUMERO_BOT = "549XXXXXXXXXX"; 
 
 const limpiarTexto = (texto) => {
     return texto.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
@@ -21,44 +23,55 @@ const formatearFecha = (fechaStr) => {
     return `${partes[2]}-${partes[1]}-${partes[0]}`;
 };
 
-// --- FUNCIÓN PRINCIPAL DEL BOT CON BAILEYS ---
+// --- FUNCIÓN PRINCIPAL DEL BOT ---
 async function iniciarBot() {
     const { state, saveCreds } = await useMultiFileAuthState('auth_baileys');
 
     const sock = makeWASocket({
         auth: state,
         logger: pino({ level: 'silent' }), 
-        // 1. EL DISFRAZ: Le hacemos creer a WhatsApp que somos una PC con Linux
         browser: ["Ubuntu", "Chrome", "120.0.0"], 
-        // 2. AHORRO: Le decimos que no descargue el historial viejo para no saturar la RAM
         syncFullHistory: false,
+        printQRInTerminal: false, // APAGAMOS EL QR POR COMPLETO
         generateHighQualityLinkPreview: false
     });
 
     sock.ev.on('creds.update', saveCreds);
 
-    sock.ev.on('connection.update', (update) => {
-        const { connection, lastDisconnect, qr } = update;
+    // --- LA MAGIA DEL CÓDIGO DE VINCULACIÓN ---
+    // Si la sesión no existe, esperamos 3 segundos y pedimos el código de 8 letras
+    if (!sock.authState.creds?.me?.id) {
+        setTimeout(async () => {
+            try {
+                let numeroLimpio = NUMERO_BOT.replace(/[^0-9]/g, '');
+                const code = await sock.requestPairingCode(numeroLimpio);
+                console.log('\n======================================================');
+                console.log('🔑 CÓDIGO DE VINCULACIÓN:', code);
+                console.log('Entrá a tu WhatsApp -> Dispositivos Vinculados -> Vincular con el número de teléfono');
+                console.log('======================================================\n');
+            } catch (err) {
+                console.log('❌ Error al pedir código de vinculación. Render está bloqueando la conexión inicial.');
+            }
+        }, 3000); 
+    }
 
-        if (qr) {
-            qrcode.generate(qr, { small: true });
-            console.log('¡Escaneá este QR rápido desde tu WhatsApp!');
-        }
+    sock.ev.on('connection.update', (update) => {
+        const { connection, lastDisconnect } = update;
 
         if (connection === 'close') {
             const reconectar = lastDisconnect.error?.output?.statusCode !== DisconnectReason.loggedOut;
-            // 3. LA LUPA: Ahora vemos exactamente por qué falla
-            console.log('❌ Conexión cerrada. Error real:', lastDisconnect.error?.message || lastDisconnect.error);
+            console.log('❌ Conexión cerrada. Error:', lastDisconnect.error?.message || lastDisconnect.error);
             
             if (reconectar) {
-                console.log('⏳ Intentando reconectar en 3 segundos...');
-                setTimeout(iniciarBot, 3000); // Pausa de 3 segundos para no hacer spam
+                console.log('⏳ Intentando reconectar...');
+                setTimeout(iniciarBot, 4000); 
             }
         } else if (connection === 'open') {
-            console.log('✅ ¡Bot conectado exitosamente! Ya podés mandarle gastos.');
+            console.log('✅ ¡Bot conectado exitosamente con el Pairing Code!');
         }
     });
 
+    // ... (ACÁ SIGUEN TODOS TUS COMANDOS DE SIEMPRE) ...
     sock.ev.on('messages.upsert', async ({ messages }) => {
         const m = messages[0];
         if (!m.message) return;
@@ -74,7 +87,6 @@ async function iniciarBot() {
             await sock.sendMessage(idChat, { text: textoRespuesta }, { quoted: m });
         };
 
-        // --- TUS COMANDOS ---
         if (texto === 'info') {
             const mensajeInfo = `🤖 *BOT FAMILIAR DE GASTOS* 🤖\n\n📝 *Anotar:* _costo 20000_\n📅 *Mes:* _total mes_\n📊 *Resumen:* _resumen mes_\n👤 *Lo tuyo:* _mis gastos mes_\n📆 *Fechas:* _total desde DD/MM/AAAA hasta DD/MM/AAAA_\n💰 *Histórico:* _total historico_`;
             await responder(mensajeInfo);
