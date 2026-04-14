@@ -10,7 +10,7 @@ const supabaseKey = process.env.SUPABASE_KEY;
 const supabase = createClient(supabaseUrl, supabaseKey);
 // ----------------------------------------
 
-// 👇 ¡PONÉ EL NÚMERO DEL BOT ACÁ! (Ej: 5492984123456)
+// 👇 ¡PONÉ TU NÚMERO DE BOT ACÁ! (Ej: 5492984XXXXXX)
 const NUMERO_BOT = "5492984784498"; 
 
 const limpiarTexto = (texto) => {
@@ -23,23 +23,21 @@ const formatearFecha = (fechaStr) => {
     return `${partes[2]}-${partes[1]}-${partes[0]}`;
 };
 
-// --- FUNCIÓN PRINCIPAL DEL BOT ---
 async function iniciarBot() {
     const { state, saveCreds } = await useMultiFileAuthState('auth_baileys');
 
     const sock = makeWASocket({
         auth: state,
         logger: pino({ level: 'silent' }), 
+        // 👇 ESTE ES EL DISFRAZ OBLIGATORIO PARA QUE RENDER NO SEA BLOQUEADO
         browser: ["Ubuntu", "Chrome", "120.0.0"], 
         syncFullHistory: false,
-        printQRInTerminal: false, // APAGAMOS EL QR POR COMPLETO
+        printQRInTerminal: false, 
         generateHighQualityLinkPreview: false
     });
 
     sock.ev.on('creds.update', saveCreds);
 
-    // --- LA MAGIA DEL CÓDIGO DE VINCULACIÓN ---
-    // Si la sesión no existe, esperamos 3 segundos y pedimos el código de 8 letras
     if (!sock.authState.creds?.me?.id) {
         setTimeout(async () => {
             try {
@@ -50,7 +48,7 @@ async function iniciarBot() {
                 console.log('Entrá a tu WhatsApp -> Dispositivos Vinculados -> Vincular con el número de teléfono');
                 console.log('======================================================\n');
             } catch (err) {
-                console.log('❌ Error al pedir código de vinculación. Render está bloqueando la conexión inicial.');
+                console.log('❌ Error al pedir código de vinculación:', err.message);
             }
         }, 3000); 
     }
@@ -63,15 +61,14 @@ async function iniciarBot() {
             console.log('❌ Conexión cerrada. Error:', lastDisconnect.error?.message || lastDisconnect.error);
             
             if (reconectar) {
-                console.log('⏳ Intentando reconectar...');
-                setTimeout(iniciarBot, 4000); 
+                console.log('⏳ Intentando reconectar en 5 segundos...');
+                setTimeout(iniciarBot, 5000); 
             }
         } else if (connection === 'open') {
             console.log('✅ ¡Bot conectado exitosamente con el Pairing Code!');
         }
     });
 
-    // ... (ACÁ SIGUEN TODOS TUS COMANDOS DE SIEMPRE) ...
     sock.ev.on('messages.upsert', async ({ messages }) => {
         const m = messages[0];
         if (!m.message) return;
@@ -190,7 +187,7 @@ async function iniciarBot() {
 // --- SERVIDOR WEB FALSO PARA RENDER ---
 const port = process.env.PORT || 3000;
 http.createServer((req, res) => {
-    res.write("El bot familiar funciona de 10");
+    res.write("El bot familiar esta encendido");
     res.end();
 }).listen(port, () => {
     console.log(`Servidor de coartada escuchando en el puerto ${port}`);
