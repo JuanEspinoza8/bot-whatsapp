@@ -11,7 +11,7 @@ const supabase = createClient(supabaseUrl, supabaseKey);
 // ----------------------------------------
 
 // 👇 ¡PONÉ EL NÚMERO DEL BOT ACÁ! (Ej: 5492984123456)
-const NUMERO_BOT = "549XXXXXXXXXX"; 
+const NUMERO_BOT = "5492984784498"; 
 
 const limpiarTexto = (texto) => {
     return texto.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
